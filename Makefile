@@ -85,7 +85,7 @@ deploy-app:
 
 deploy-monitoring:
 	@echo "Deploying monitoring..."
-	kubectl apply -f $(DEPLOY_DIR)/monitoring.yaml -n $(NAMESPACE)
+	kubectl apply -f $(DEPLOY_DIR)/enhanced-monitoring.yaml -n $(NAMESPACE)
 
 # Database setup
 setup-db:
@@ -337,7 +337,7 @@ deploy-local:
 # Uninstall
 uninstall:
 	@echo "Uninstalling application..."
-	kubectl delete -f $(DEPLOY_DIR)/monitoring.yaml -n $(NAMESPACE) --ignore-not-found
+	kubectl delete -f $(DEPLOY_DIR)/enhanced-monitoring.yaml -n $(NAMESPACE) --ignore-not-found
 	kubectl delete -f $(DEPLOY_DIR)/deployment.yaml -n $(NAMESPACE) --ignore-not-found
 	kubectl delete -f $(DEPLOY_DIR)/configmap.yaml -n $(NAMESPACE) --ignore-not-found
 	kubectl delete -f $(DEPLOY_DIR)/secrets.yaml -n $(NAMESPACE) --ignore-not-found

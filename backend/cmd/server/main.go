@@ -10,19 +10,18 @@ import (
 	"syscall"
 	"time"
 
-	"k8s-cost-optimizer/internal/api"
 	"k8s-cost-optimizer/internal/analyzer"
+	"k8s-cost-optimizer/internal/api"
 	"k8s-cost-optimizer/internal/collectors"
-	"k8s-cost-optimizer/internal/database"
 	"k8s-cost-optimizer/pkg/cloudprovider"
 	"k8s-cost-optimizer/pkg/kubernetes"
 
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	_ "github.com/lib/pq"
 )
 
 var log = logrus.New()
@@ -62,10 +61,14 @@ func main() {
 		log.Fatalf("Failed to initialize cloud provider: %v", err)
 	}
 
+	// Initialize WebSocket hub
+	wsHub := websocket.NewHub()
+	go wsHub.Run()
+
 	// Initialize components
 	metricsCollector := collectors.NewMetricsCollector(k8sClient, db)
 	rightsizingAnalyzer := analyzer.NewRightsizingAnalyzer(db)
-	handler := api.NewHandler(rightsizingAnalyzer, metricsCollector, costProvider, db, redisClient)
+	handler := api.NewHandler(rightsizingAnalyzer, metricsCollector, costProvider, db, redisClient, wsHub)
 
 	// Initialize router
 	router := initRouter(handler)
@@ -221,6 +224,10 @@ func initRouter(handler *api.Handler) *mux.Router {
 	// Health checks
 	router.HandleFunc("/health", handler.HealthCheck).Methods("GET")
 	router.HandleFunc("/ready", handler.ReadyCheck).Methods("GET")
+
+	// WebSocket endpoint
+	wsHandler := api.NewWebSocketHandler(handler.wsHub)
+	router.HandleFunc("/ws", wsHandler.ServeWebSocket)
 
 	// Metrics endpoint
 	router.Handle("/metrics", promhttp.Handler()).Methods("GET")

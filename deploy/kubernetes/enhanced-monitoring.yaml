@@ -1,0 +1,418 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: k8s-cost-optimizer-monitor
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+spec:
+  selector:
+    matchLabels:
+      app: k8s-cost-optimizer
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scrapeTimeout: 10s
+  - port: health
+    interval: 10s
+    path: /health
+    scrapeTimeout: 5s
+  - port: ready
+    interval: 10s
+    path: /ready
+    scrapeTimeout: 5s
+  metricRelabelings:
+  - sourceLabels: [__name__]
+    regex: 'k8s_cost_optimizer_(.*)'
+    targetLabel: metric_name
+    replacement: '${1}'
+  - sourceLabels: [__name__]
+    regex: 'api_request_duration_seconds'
+    targetLabel: metric_type
+    replacement: 'latency'
+  - sourceLabels: [__name__]
+    regex: 'api_requests_total'
+    targetLabel: metric_type
+    replacement: 'throughput'
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: k8s-cost-optimizer-pod-monitor
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+spec:
+  selector:
+    matchLabels:
+      app: k8s-cost-optimizer
+  podMetricsEndpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: k8s-cost-optimizer-alerts
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+spec:
+  groups:
+  - name: cost-alerts
+    interval: 5m
+    rules:
+    - alert: HighNamespaceCost
+      expr: |
+        sum(namespace_costs{}) by (namespace) > 1000
+      for: 1h
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High cost detected in namespace {{ $labels.namespace }}"
+        description: "Namespace {{ $labels.namespace }} has exceeded $1000 in the last hour"
+        runbook_url: "https://wiki.company.com/runbooks/cost-optimization"
+        
+    - alert: ResourceWaste
+      expr: |
+        (sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace) /
+         sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace)) < 0.3
+      for: 6h
+      labels:
+        severity: info
+        team: platform
+      annotations:
+        summary: "Low CPU utilization in namespace {{ $labels.namespace }}"
+        description: "CPU utilization is below 30% for 6 hours in {{ $labels.namespace }}"
+        
+    - alert: CostAnomalyDetected
+      expr: |
+        abs(rate(namespace_costs[1h]) - rate(namespace_costs[1h] offset 1d)) > 0.5
+      for: 30m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Cost anomaly detected"
+        description: "Unusual cost pattern detected - investigate immediately"
+        
+    - alert: HighMemoryUtilization
+      expr: |
+        (sum(container_memory_working_set_bytes) by (namespace) /
+         sum(kube_pod_container_resource_requests{resource="memory"}) by (namespace)) > 0.9
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High memory utilization in namespace {{ $labels.namespace }}"
+        description: "Memory utilization is above 90% in {{ $labels.namespace }}"
+        
+    - alert: PodRestartingFrequently
+      expr: |
+        increase(kube_pod_container_status_restarts_total[1h]) > 5
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Pod restarting frequently"
+        description: "Pod {{ $labels.pod }} has restarted more than 5 times in the last hour"
+        
+    - alert: HighAPILatency
+      expr: |
+        histogram_quantile(0.95, rate(api_request_duration_seconds_bucket[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High API latency detected"
+        description: "95th percentile API latency is above 2 seconds"
+        
+    - alert: HighErrorRate
+      expr: |
+        rate(api_requests_total{status=~"5.."}[5m]) /
+        rate(api_requests_total[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "High error rate detected"
+        description: "Error rate is above 5%"
+        
+    - alert: DatabaseConnectionIssues
+      expr: |
+        up{job="k8s-cost-optimizer"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Database connection issues"
+        description: "Cannot connect to the database"
+        
+    - alert: RedisConnectionIssues
+      expr: |
+        redis_up == 0
+      for: 1m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Redis connection issues"
+        description: "Cannot connect to Redis cache"
+        
+    - alert: DiskSpaceLow
+      expr: |
+        (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Low disk space on node {{ $labels.instance }}"
+        description: "Disk space is below 10% on {{ $labels.instance }}"
+        
+    - alert: HighCPUUsage
+      expr: |
+        100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High CPU usage on node {{ $labels.instance }}"
+        description: "CPU usage is above 80% on {{ $labels.instance }}"
+        
+    - alert: HighMemoryUsage
+      expr: |
+        (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High memory usage on node {{ $labels.instance }}"
+        description: "Memory usage is above 90% on {{ $labels.instance }}"
+        
+    - alert: NetworkErrors
+      expr: |
+        increase(node_network_receive_errs_total[5m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Network errors on node {{ $labels.instance }}"
+        description: "Network receive errors detected on {{ $labels.instance }}"
+        
+    - alert: PodOOMKilled
+      expr: |
+        increase(container_oom_events_total[1h]) > 0
+      for: 1m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Pod OOM killed"
+        description: "Pod {{ $labels.pod }} was killed due to out of memory"
+        
+    - alert: PersistentVolumeFilling
+      expr: |
+        (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Persistent volume filling up"
+        description: "Volume {{ $labels.persistentvolumeclaim }} is more than 80% full"
+        
+    - alert: CertificateExpiringSoon
+      expr: |
+        probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+      for: 1m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "SSL certificate expiring soon"
+        description: "SSL certificate will expire in less than 30 days"
+        
+    - alert: BackupFailure
+      expr: |
+        backup_last_success_timestamp - time() > 86400
+      for: 1h
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Backup failure detected"
+        description: "No successful backup in the last 24 hours"
+        
+    - alert: CostOptimizationOpportunity
+      expr: |
+        sum(potential_savings_dollars) by (namespace) > 100
+      for: 1h
+      labels:
+        severity: info
+        team: platform
+      annotations:
+        summary: "Cost optimization opportunity in {{ $labels.namespace }}"
+        description: "Potential savings of ${{ $value }} available in {{ $labels.namespace }}"
+        
+    - alert: UnusualResourceUsage
+      expr: |
+        abs(
+          avg_over_time(container_cpu_usage_seconds_total[1h]) -
+          avg_over_time(container_cpu_usage_seconds_total[1h] offset 1d)
+        ) > avg_over_time(container_cpu_usage_seconds_total[1h] offset 1d) * 0.5
+      for: 30m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Unusual resource usage pattern"
+        description: "Resource usage has changed by more than 50% compared to yesterday"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-k8s-cost-optimizer
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "K8s Cost Optimizer Dashboard",
+        "tags": ["k8s", "cost", "optimization"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Total Cost by Namespace",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(namespace_costs) by (namespace)",
+                "legendFormat": "{{namespace}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "displayMode": "list"
+                }
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Cost Trend",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(namespace_costs[5m])",
+                "legendFormat": "{{namespace}}"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Resource Utilization",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "avg(rate(container_cpu_usage_seconds_total[5m])) by (namespace) * 100",
+                "legendFormat": "{{namespace}}"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Potential Savings",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(potential_savings_dollars) by (namespace)",
+                "legendFormat": "{{namespace}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 100},
+                    {"color": "red", "value": 500}
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: kube-system
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      slack_api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+      
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'slack-notifications'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'pager-duty-critical'
+        continue: true
+      - match:
+          severity: warning
+        receiver: 'slack-notifications'
+        
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - channel: '#platform-alerts'
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        send_resolved: true
+        
+    - name: 'pager-duty-critical'
+      pagerduty_configs:
+      - routing_key: 'YOUR_PAGERDUTY_KEY'
+        description: '{{ template "pagerduty.description" . }}'
+        severity: '{{ if eq .CommonLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
+        
+    templates:
+    - '/etc/alertmanager/template/*.tmpl' 

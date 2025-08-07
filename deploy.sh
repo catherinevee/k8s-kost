@@ -194,8 +194,8 @@ deploy_monitoring() {
     log "Deploying monitoring..."
     
     # Deploy Prometheus rules
-    if [ -f monitoring/prometheus-rules.yaml ]; then
-        kubectl apply -f monitoring/prometheus-rules.yaml -n $NAMESPACE
+    if [ -f deploy/kubernetes/monitoring.yaml ]; then
+    kubectl apply -f deploy/kubernetes/monitoring.yaml -n $NAMESPACE
     fi
     
     # Deploy Grafana dashboard

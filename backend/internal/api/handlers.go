@@ -12,6 +12,7 @@ import (
 	"k8s-cost-optimizer/internal/analyzer"
 	"k8s-cost-optimizer/internal/collectors"
 	"k8s-cost-optimizer/pkg/cloudprovider"
+	"k8s-cost-optimizer/internal/websocket"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +26,7 @@ type Handler struct {
 	costProvider  cloudprovider.Provider
 	db            *sql.DB
 	cache         *redis.Client
+	wsHub         *websocket.Hub
 	log           *logrus.Logger
 }
 
@@ -48,13 +50,15 @@ var (
 )
 
 func NewHandler(analyzer *analyzer.RightsizingAnalyzer, collector *collectors.MetricsCollector, 
-	costProvider cloudprovider.Provider, db *sql.DB, cache *redis.Client) *Handler {
+	costProvider cloudprovider.Provider, db *sql.DB, cache *redis.Client, wsHub *websocket.Hub) *Handler {
+	
 	return &Handler{
 		analyzer:     analyzer,
 		collector:    collector,
 		costProvider: costProvider,
 		db:           db,
 		cache:        cache,
+		wsHub:        wsHub,
 		log:          logrus.New(),
 	}
 }
@@ -210,6 +214,16 @@ func (h *Handler) GetNamespaceCosts(w http.ResponseWriter, r *http.Request) {
 	// Cache the response
 	jsonResponse, _ := json.Marshal(response)
 	h.cache.Set(r.Context(), cacheKey, jsonResponse, 15*time.Minute)
+	
+	// Broadcast real-time update via WebSocket
+	if h.wsHub != nil {
+		h.wsHub.BroadcastToNamespace(namespace, map[string]interface{}{
+			"type": "cost_update",
+			"namespace": namespace,
+			"data": response,
+			"timestamp": time.Now(),
+		})
+	}
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
