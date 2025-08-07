@@ -1,0 +1,370 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: k8s-cost-optimizer-alerts
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: cost-alerts
+    interval: 5m
+    rules:
+    - alert: HighNamespaceCost
+      expr: |
+        sum(namespace_costs{}) by (namespace) > 1000
+      for: 1h
+      labels:
+        severity: warning
+        app: k8s-cost-optimizer
+      annotations:
+        summary: "High cost detected in namespace {{ $labels.namespace }}"
+        description: "Namespace {{ $labels.namespace }} has exceeded $1000 in the last hour"
+        runbook_url: "https://github.com/your-org/k8s-cost-optimizer/docs/alerts/high-cost"
+
+    - alert: ResourceWaste
+      expr: |
+        (sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace) / 
+         sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace)) < 0.3
+      for: 6h
+      labels:
+        severity: info
+        app: k8s-cost-optimizer
+      annotations:
+        summary: "Low CPU utilization in namespace {{ $labels.namespace }}"
+        description: "CPU utilization is below 30% for 6 hours in {{ $labels.namespace }}"
+        runbook_url: "https://github.com/your-org/k8s-cost-optimizer/docs/alerts/resource-waste"
+
+    - alert: CostAnomalyDetected
+      expr: |
+        abs(rate(namespace_costs[1h]) - rate(namespace_costs[1h] offset 1d)) > 0.5
+      for: 30m
+      labels:
+        severity: warning
+        app: k8s-cost-optimizer
+      annotations:
+        summary: "Cost anomaly detected"
+        description: "Unusual cost pattern detected - investigate immediately"
+        runbook_url: "https://github.com/your-org/k8s-cost-optimizer/docs/alerts/cost-anomaly"
+
+    - alert: MemoryWaste
+      expr: |
+        (sum(container_memory_working_set_bytes) by (namespace) / 
+         sum(kube_pod_container_resource_requests{resource="memory"}) by (namespace)) < 0.4
+      for: 6h
+      labels:
+        severity: info
+        app: k8s-cost-optimizer
+      annotations:
+        summary: "Low memory utilization in namespace {{ $labels.namespace }}"
+        description: "Memory utilization is below 40% for 6 hours in {{ $labels.namespace }}"
+        runbook_url: "https://github.com/your-org/k8s-cost-optimizer/docs/alerts/memory-waste"
+
+    - alert: CostOptimizerDown
+      expr: |
+        up{job="k8s-cost-optimizer"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        app: k8s-cost-optimizer
+      annotations:
+        summary: "Kubernetes Cost Optimizer is down"
+        description: "The cost optimizer service has been down for more than 1 minute"
+        runbook_url: "https://github.com/your-org/k8s-cost-optimizer/docs/alerts/service-down"
+
+    - alert: HighOptimizationSavings
+      expr: |
+        sum(optimization_savings_potential) by (namespace) > 500
+      for: 0m
+      labels:
+        severity: info
+        app: k8s-cost-optimizer
+      annotations:
+        summary: "High optimization savings available in {{ $labels.namespace }}"
+        description: "More than $500 in potential monthly savings available"
+        runbook_url: "https://github.com/your-org/k8s-cost-optimizer/docs/alerts/high-savings"
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: k8s-cost-optimizer
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+    prometheus: kube-prometheus
+    role: service-monitor
+spec:
+  selector:
+    matchLabels:
+      app: k8s-cost-optimizer
+  endpoints:
+  - port: api
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+  - port: api
+    path: /health
+    interval: 30s
+    scrapeTimeout: 5s
+    honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: k8s-cost-optimizer-pods
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+    prometheus: kube-prometheus
+    role: pod-monitor
+spec:
+  selector:
+    matchLabels:
+      app: k8s-cost-optimizer
+  podMetricsEndpoints:
+  - port: api
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-k8s-cost-optimizer
+  namespace: kube-system
+  labels:
+    grafana_dashboard: "1"
+data:
+  k8s-cost-optimizer-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Kubernetes Cost Optimizer",
+        "tags": ["kubernetes", "cost", "optimization"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Total Cluster Cost",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(namespace_costs_total)",
+                "legendFormat": "Total Cost"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "displayMode": "list"
+                },
+                "mappings": [],
+                "thresholds": {
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1000
+                    }
+                  ]
+                },
+                "unit": "currencyUSD"
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Cost by Namespace",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum(namespace_costs_total) by (namespace)",
+                "legendFormat": "{{namespace}}"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Resource Utilization",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace)",
+                "legendFormat": "CPU - {{namespace}}"
+              },
+              {
+                "expr": "sum(container_memory_working_set_bytes) by (namespace)",
+                "legendFormat": "Memory - {{namespace}}"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Optimization Savings",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(optimization_savings_potential)",
+                "legendFormat": "Potential Savings"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "displayMode": "list"
+                },
+                "mappings": [],
+                "thresholds": {
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 100
+                    }
+                  ]
+                },
+                "unit": "currencyUSD"
+              }
+            }
+          }
+        ],
+        "time": {
+          "from": "now-24h",
+          "to": "now"
+        },
+        "timepicker": {},
+        "templating": {
+          "list": []
+        },
+        "annotations": {
+          "list": []
+        },
+        "refresh": "5s",
+        "schemaVersion": 27,
+        "version": 0,
+        "links": []
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-k8s-cost-optimizer
+  namespace: kube-system
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'slack-notifications'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'pager-duty-critical'
+        continue: true
+      - match:
+          app: k8s-cost-optimizer
+        receiver: 'cost-optimizer-team'
+
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - channel: '#cost-optimization'
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        send_resolved: true
+
+    - name: 'pager-duty-critical'
+      pagerduty_configs:
+      - routing_key: YOUR_PAGERDUTY_KEY
+        description: '{{ template "pagerduty.description" . }}'
+        severity: '{{ if eq .GroupLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
+        client: 'Kubernetes Cost Optimizer'
+        client_url: '{{ template "pagerduty.clientURL" . }}'
+
+    - name: 'cost-optimizer-team'
+      slack_configs:
+      - channel: '#cost-optimizer-alerts'
+        title: 'Cost Optimizer Alert'
+        text: '{{ template "slack.text" . }}'
+        send_resolved: true
+
+    templates:
+    - '/etc/alertmanager/template/*.tmpl'
+---
+apiVersion: monitoring.coreos.com/v1
+kind: AlertmanagerConfig
+metadata:
+  name: k8s-cost-optimizer-alerts
+  namespace: kube-system
+spec:
+  route:
+    groupBy: [ 'alertname', 'namespace' ]
+    groupWait: 10s
+    groupInterval: 10s
+    repeatInterval: 1h
+    receiver: 'slack-notifications'
+    routes:
+    - match:
+        severity: critical
+      receiver: 'pager-duty-critical'
+      continue: true
+    - match:
+        app: k8s-cost-optimizer
+      receiver: 'cost-optimizer-team'
+
+  receivers:
+  - name: 'slack-notifications'
+    slackConfigs:
+    - apiURL:
+        secret:
+          name: slack-webhook
+          key: url
+      channel: '#cost-optimization'
+      title: '{{ template "slack.title" . }}'
+      text: '{{ template "slack.text" . }}'
+      sendResolved: true
+
+  - name: 'pager-duty-critical'
+    pagerDutyConfigs:
+    - routingKey:
+        secret:
+          name: pagerduty-key
+          key: key
+      description: '{{ template "pagerduty.description" . }}'
+      severity: '{{ if eq .GroupLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
+      client: 'Kubernetes Cost Optimizer'
+      clientURL: '{{ template "pagerduty.clientURL" . }}'
+
+  - name: 'cost-optimizer-team'
+    slackConfigs:
+    - apiURL:
+        secret:
+          name: slack-webhook
+          key: url
+      channel: '#cost-optimizer-alerts'
+      title: 'Cost Optimizer Alert'
+      text: '{{ template "slack.text" . }}'
+      sendResolved: true

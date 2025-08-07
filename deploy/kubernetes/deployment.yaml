@@ -1,0 +1,301 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-cost-optimizer
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+    version: v1.0.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-cost-optimizer
+  template:
+    metadata:
+      labels:
+        app: k8s-cost-optimizer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: k8s-cost-optimizer
+      containers:
+      - name: backend
+        image: k8s-cost-optimizer:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: api
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: k8s-cost-optimizer-secrets
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: PROMETHEUS_URL
+          value: "http://prometheus:9090"
+        - name: CLOUD_PROVIDER
+          value: "aws"
+        - name: CLOUD_REGION
+          value: "us-west-2"
+        - name: CLUSTER_NAME
+          value: "production-cluster"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: LOG_FORMAT
+          value: "json"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /etc/k8s-cost-optimizer
+          readOnly: true
+      - name: frontend
+        image: k8s-cost-optimizer-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: web
+        env:
+        - name: REACT_APP_API_URL
+          value: "http://localhost:8080"
+        - name: REACT_APP_VERSION
+          value: "v1.0.0"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: k8s-cost-optimizer-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-cost-optimizer
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+spec:
+  selector:
+    app: k8s-cost-optimizer
+  ports:
+  - name: web
+    port: 80
+    targetPort: 3000
+    protocol: TCP
+  - name: api
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-cost-optimizer-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    server:
+      port: ":8080"
+
+    database:
+      host: "postgres"
+      port: 5432
+      name: "k8s_cost_optimizer"
+      user: "postgres"
+
+    redis:
+      host: "redis"
+      port: 6379
+      db: 0
+
+    prometheus:
+      url: "http://prometheus:9090"
+
+    metrics:
+      collection_interval: "5m"
+
+    cost:
+      collection_interval: "1h"
+
+    cloud:
+      provider: "aws"
+      region: "us-west-2"
+      cluster_name: "production-cluster"
+
+    log:
+      level: "info"
+      format: "json"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: k8s-cost-optimizer-secrets
+  namespace: kube-system
+type: Opaque
+data:
+  database-url: cG9zdGdyZXM6Ly9wb3N0Z3JlczpwYXNzd29yZEBwb3N0Z3Jlczo1NDMyL2s4cy1jb3N0LW9wdGltaXplcj9zc2xtb2RlPWRpc2FibGU=
+  aws-access-key: <base64-encoded-access-key>
+  aws-secret-key: <base64-encoded-secret-key>
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-cost-optimizer
+rules:
+- apiGroups: [ "" ]
+  resources: [ "pods", "nodes", "namespaces", "services", "persistentvolumeclaims", "events" ]
+  verbs: [ "get", "list", "watch" ]
+- apiGroups: [ "apps" ]
+  resources: [ "deployments", "replicasets", "statefulsets", "daemonsets" ]
+  verbs: [ "get", "list", "watch", "patch" ]
+- apiGroups: [ "metrics.k8s.io" ]
+  resources: [ "pods", "nodes" ]
+  verbs: [ "get", "list" ]
+- apiGroups: [ "" ]
+  resources: [ "events" ]
+  verbs: [ "create" ]
+- apiGroups: [ "rbac.authorization.k8s.io" ]
+  resources: [ "clusterroles", "clusterrolebindings", "roles", "rolebindings" ]
+  verbs: [ "get", "list" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-cost-optimizer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-cost-optimizer
+subjects:
+- kind: ServiceAccount
+  name: k8s-cost-optimizer
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-cost-optimizer
+  namespace: kube-system
+  labels:
+    app: k8s-cost-optimizer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-cost-optimizer-ingress
+  namespace: kube-system
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - cost-optimizer.your-domain.com
+    secretName: k8s-cost-optimizer-tls
+  rules:
+  - host: cost-optimizer.your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: k8s-cost-optimizer
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: k8s-cost-optimizer-hpa
+  namespace: kube-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: k8s-cost-optimizer
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k8s-cost-optimizer-pdb
+  namespace: kube-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: k8s-cost-optimizer
