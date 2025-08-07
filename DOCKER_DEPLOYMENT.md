@@ -1,6 +1,6 @@
 # Docker Deployment Guide
 
-This guide explains how to run the Kubernetes Cost Optimizer application using Docker containers.
+This guide shows you how to run the Kubernetes Cost Optimizer application using Docker containers.
 
 ## Prerequisites
 
@@ -591,7 +591,7 @@ docker run --rm -v k8s-kost_postgres_data:/data alpine chown -R 999:999 /data
 ### Debug Commands
 
 ```bash
-# Get comprehensive status
+# Get detailed status
 docker-compose -f docker-compose.local.yml ps
 
 # Check all containers

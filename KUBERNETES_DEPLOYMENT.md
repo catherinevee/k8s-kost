@@ -1,6 +1,6 @@
 # Kubernetes Deployment Guide
 
-This guide explains how to deploy the Kubernetes Cost Optimizer application to a Kubernetes cluster.
+This guide shows you how to deploy the Kubernetes Cost Optimizer application to your Kubernetes cluster.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ This guide explains how to deploy the Kubernetes Cost Optimizer application to a
 - **kubectl** (configured for your cluster)
 - **Docker** (for building images)
 - **Make** (for automation)
-- **Helm** (optional, for advanced deployments)
+- **Helm** (optional, for complex deployments)
 
 ### Cluster Requirements
 - **Kubernetes v1.20+**
@@ -434,7 +434,7 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
 ### Debugging Commands
 
 ```bash
-# Get comprehensive status
+# Get detailed status
 make status
 
 # Check all resources
