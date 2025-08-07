@@ -35,30 +35,30 @@ k8s-cost-optimizer/
 ```mermaid
 graph LR
     %% User Journey
-    subgraph "👤 User Experience"
-        USER[👤 DevOps Engineer]
-        DASHBOARD[📊 Cost Dashboard]
-        REPORTS[📈 Reports & Alerts]
+    subgraph "User Experience"
+        USER[DevOps Engineer]
+        DASHBOARD[Cost Dashboard]
+        REPORTS[Reports & Alerts]
     end
     
     %% Core Application
-    subgraph "🖥️ Application"
-        API[🔌 REST API]
-        ANALYZER[🧠 Cost Analyzer]
-        RECOMMENDATIONS[💡 Optimization Tips]
+    subgraph "Application"
+        API[REST API]
+        ANALYZER[Cost Analyzer]
+        RECOMMENDATIONS[Optimization Tips]
     end
     
     %% Data Sources
-    subgraph "📡 Data Collection"
-        K8S[☸️ Kubernetes Cluster]
-        CLOUD[☁️ Cloud Billing APIs]
-        METRICS[📊 Prometheus Metrics]
+    subgraph "Data Collection"
+        K8S[Kubernetes Cluster]
+        CLOUD[Cloud Billing APIs]
+        METRICS[Prometheus Metrics]
     end
     
     %% Storage
-    subgraph "💾 Data Storage"
-        DB[(🗄️ PostgreSQL Database)]
-        CACHE[(⚡ Redis Cache)]
+    subgraph "Data Storage"
+        DB[(PostgreSQL Database)]
+        CACHE[(Redis Cache)]
     end
     
     %% User Flow
@@ -94,11 +94,11 @@ graph LR
 
 ```mermaid
 sequenceDiagram
-    participant You as 👤 You
-    participant App as 🖥️ Cost Optimizer
-    participant K8s as ☸️ Kubernetes
-    participant Cloud as ☁️ Cloud Provider
-    participant DB as 💾 Database
+    participant You as You
+    participant App as Cost Optimizer
+    participant K8s as Kubernetes
+    participant Cloud as Cloud Provider
+    participant DB as Database
     
     Note over You,DB: Daily Cost Optimization Workflow
     
@@ -124,12 +124,12 @@ sequenceDiagram
 
 | Feature | What You Get | Business Impact |
 |---------|-------------|-----------------|
-| 🎯 **Real-time Cost Tracking** | Live cost breakdown by namespace, pod, and resource | Immediate visibility into spending |
-| 🧠 **Smart Recommendations** | AI-powered rightsizing suggestions with confidence scores | Reduce costs by 20-40% safely |
-| 📈 **Predictive Analytics** | Future cost forecasting based on usage patterns | Better budget planning |
-| ⚡ **One-click Optimization** | Apply recommendations with a single click | Save time and reduce manual work |
-| 📊 **Easy Reports** | Export detailed cost analysis in PDF/Excel | Better stakeholder communication |
-| 🔔 **Smart Alerts** | Get notified when costs spike or resources are wasted | Proactive cost management |
+| **Real-time Cost Tracking** | Live cost breakdown by namespace, pod, and resource | Immediate visibility into spending |
+| **Smart Recommendations** | AI-powered rightsizing suggestions with confidence scores | Reduce costs by 20-40% safely |
+| **Predictive Analytics** | Future cost forecasting based on usage patterns | Better budget planning |
+| **One-click Optimization** | Apply recommendations with a single click | Save time and reduce manual work |
+| **Easy Reports** | Export detailed cost analysis in PDF/Excel | Better stakeholder communication |
+| **Smart Alerts** | Get notified when costs spike or resources are wasted | Proactive cost management |
 
 ## Data Flow Architecture
 
@@ -373,7 +373,7 @@ cd k8s-cost-optimizer
 
 ### Step 2: Start Application (Choose One)
 
-#### 🚀 **Super Quick (Recommended)**
+#### **Super Quick (Recommended)**
 ```bash
 # Linux/Mac
 ./quick-test.sh start
@@ -382,7 +382,7 @@ cd k8s-cost-optimizer
 quick-test.bat start
 ```
 
-#### 🔧 **Manual Options**
+#### **Manual Options**
 ```bash
 # Option 1: Using Docker Compose
 docker-compose -f docker-compose.local.yml up -d
@@ -401,7 +401,7 @@ kubectl port-forward svc/k8s-cost-optimizer 3000:80
 - **Grafana**: http://localhost:3001 (admin/admin)
 - **Prometheus**: http://localhost:9090
 
-### 🧪 **Quick Testing Commands**
+### **Quick Testing Commands**
 
 The quick test script provides easy commands for testing:
 
